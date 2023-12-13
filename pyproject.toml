@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "ambientika"
-version = "0.0.2"
+version = "0.0.3"
 authors = [
     { name = "Genna Wingert", email = "wingertge@gmail.com" }
 ]
