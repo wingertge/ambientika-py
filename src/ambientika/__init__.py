@@ -1,6 +1,6 @@
-import requests
+import aiohttp
 
-from typing import (Any, TypedDict)
+from typing import (Any, TypedDict, Optional)
 from enum import IntEnum
 
 class AmbientikaApi:
@@ -8,31 +8,27 @@ class AmbientikaApi:
     id: int
     token: str
 
-    def __init__(self, username: str, password: str, host: str) -> None:
+    def __init__(self, host: str, id: int, token: str) -> None:
         self.host = host
+        self.id = id
+        self.token = token
 
-        login_data = {
-            'username': username,
-            'password': password
-        }
-        response = requests.post(url = "{host}/users/authenticate".format(host = host), json = login_data)
-
-        response_data = response.json()
-        self.id = response_data['id']
-        self.token = response_data['jwtToken']
-
-    def get(self, path: str, params: dict[str, Any] = {}) -> Any:
+    async def get(self, path: str, params: dict[str, Any] = {}) -> Optional[Any]:
         headers = {
             'Authorization': "Bearer {token}".format(token = self.token)
         }
-        response = requests.get(url = f"{self.host}/{path}", headers = headers, params = params)
-        return response.json()
+        async with aiohttp.ClientSession() as session:
+            async with session.get(url = f"{self.host}/{path}", headers = headers, params = params) as response:
+                if response.status == 200:
+                    return await response.json()
     
-    def post(self, path: str, body: dict[str, Any]) -> None:
+    async def post(self, path: str, body: dict[str, Any]) -> bool:
         headers = {
             'Authorization': "Bearer {token}".format(token = self.token)
         }
-        requests.post(url = f"{self.host}/{path}", headers = headers, json = body)
+        async with aiohttp.ClientSession() as session:
+            async with session.post(url = f"{self.host}/{path}", headers = headers, json = body) as response:
+                return response.status == 200
     
 class OperatingMode(IntEnum):
     Smart = 0
@@ -107,33 +103,34 @@ class Device:
         self.installation = data['installation']
         self.room_id = data['roomId']
 
-    def status(self) -> DeviceStatus:
-        data = self.api.get("device/device-status", {'deviceSerialNumber': self.serial_number})
-        return {
-            'operating_mode': OperatingMode[data['operatingMode']],
-            'fan_speed': FanSpeed[data['fanSpeed']],
-            'humidity_level': HumidityLevel[data['humidityLevel']],
-            'temperature': data['temperature'],
-            'humidity': data['humidity'],
-            'air_quality': data['airQuality'],
-            'humidity_alarm': data['humidityAlarm'],
-            'filters_status': data['filtersStatus'],
-            'night_alarm': data['nightAlarm'],
-            'device_role': data['deviceRole'],
-            'last_operating_mode': OperatingMode[data['lastOperatingMode']],
-            'packet_type': data['packetType'],
-            'device_type': data['deviceType'],
-            'device_serial_number': data['deviceSerialNumber']
-        }
+    async def status(self) -> Optional[DeviceStatus]:
+        data = await self.api.get("device/device-status", {'deviceSerialNumber': self.serial_number})
+        if data:
+            return {
+                'operating_mode': OperatingMode[data['operatingMode']],
+                'fan_speed': FanSpeed[data['fanSpeed']],
+                'humidity_level': HumidityLevel[data['humidityLevel']],
+                'temperature': data['temperature'],
+                'humidity': data['humidity'],
+                'air_quality': data['airQuality'],
+                'humidity_alarm': data['humidityAlarm'],
+                'filters_status': data['filtersStatus'],
+                'night_alarm': data['nightAlarm'],
+                'device_role': data['deviceRole'],
+                'last_operating_mode': OperatingMode[data['lastOperatingMode']],
+                'packet_type': data['packetType'],
+                'device_type': data['deviceType'],
+                'device_serial_number': data['deviceSerialNumber']
+            }
     
-    def change_mode(self, mode: DeviceMode):
+    async def change_mode(self, mode: DeviceMode) -> bool:
         data = {
             'deviceSerialNumber': self.serial_number,
             'operatingMode': str(mode['operating_mode'].value),
             'fanSpeed': mode['fan_speed'].value,
             'humidityLevel': mode['humidity_level'].value
         }
-        self.api.post("device/change-mode", data)
+        return await self.api.post("device/change-mode", data)
         
 
 class Room:
@@ -183,18 +180,33 @@ class House:
 class Ambientika:
     api: AmbientikaApi
 
-    def __init__(self, username: str, password: str, host: str = "https://app.ambientika.eu:4521"):
-        self.api = AmbientikaApi(username, password, host)
+    def __init__(self, host: str, id: int, token: str):
+        self.api = AmbientikaApi(host, id, token)
 
-    def house_complete_info(self, house_id: int) -> House:
-        house_data = self.api.get("house/house-complete-info", {'houseId': house_id})
-        return House(house_data, self.api)
+    async def house_complete_info(self, house_id: int) -> Optional[House]:
+        house_data = await self.api.get("house/house-complete-info", {'houseId': house_id})
+        if house_data:
+            return House(house_data, self.api)
 
-    def houses(self) -> list[House]:
-        houses = self.api.get("house/houses-info")
+    async def houses(self) -> Optional[list[House]]:
+        houses = await self.api.get("house/houses-info")
 
-        def fetch_house(house: dict[str, Any]):
+        async def fetch_house(house: dict[str, Any]):
             id = house['houseId']
-            return self.house_complete_info(id)
+            return await self.house_complete_info(id)
         
-        return list(map(fetch_house, houses))
+        if houses:
+            return list([x for x in [await fetch_house(house) for house in houses] if x])        
+    
+async def authenticate(username: str, password: str, host: str = "https://app.ambientika.eu:4521") -> Optional[Ambientika]:
+    login_data = {
+        'username': username,
+        'password': password
+    }
+    async with aiohttp.ClientSession() as session:
+        async with session.post(url = f"{host}/users/authenticate", json = login_data) as response:
+            if response.status == 200:
+                response_data = await response.json()
+                return Ambientika(host, response_data['id'], response_data['jwtToken'])
+            else:
+                return None
