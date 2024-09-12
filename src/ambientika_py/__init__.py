@@ -34,16 +34,10 @@ class AmbientikaApi:
         async with aiohttp.ClientSession() as session, session.get(
             url=f"{self.host}/{path}", headers=headers, params=params
         ) as response:
+            data = await parse_response_body(response)
             if response.status == 200:
-                return Success(await response.json())
+                return Success(data)
             else:
-                if (
-                    response.headers.get("Content-Type", "").lower()
-                    == "application/json"
-                ):
-                    data = await response.json()
-                else:
-                    data = None
                 return Failure({"status_code": response.status, "data": data})
 
     async def post(self, path: str, body: dict[str, Any]) -> Result[None, HttpError]:
@@ -52,16 +46,10 @@ class AmbientikaApi:
         async with aiohttp.ClientSession() as session, session.post(
             url=f"{self.host}/{path}", headers=headers, json=body
         ) as response:
+            data = await parse_response_body(response)
             if response.status == 200:
-                return Success(None)
+                return Success(data)
             else:
-                if (
-                    response.headers.get("Content-Type", "").lower()
-                    == "application/json"
-                ):
-                    data = await response.json()
-                else:
-                    data = None
                 return Failure({"status_code": response.status, "data": data})
 
 
@@ -115,6 +103,7 @@ class DeviceStatus(TypedDict):
     packet_type: str
     device_type: str
     device_serial_number: str
+
 
 class DeviceMode(TypedDict):
     """A user settings change set for updating the device."""
@@ -292,17 +281,21 @@ async def authenticate(
     async with aiohttp.ClientSession() as session, session.post(
         url=f"{host}/users/authenticate", json=login_data
     ) as response:
+        data = await parse_response_body(response)
         if response.status == 200:
-            response_data = await response.json()
             return Success(
-                Ambientika(host, response_data["id"], response_data["jwtToken"])
+                Ambientika(host, data["id"],
+                           data["jwtToken"])
             )
         else:
-            if (
-                response.headers.get("Content-Type", "").lower()
-                == "application/json"
-            ):
-                data = await response.json()
-            else:
-                data = None
             return Failure({"status_code": response.status, "data": data})
+
+
+async def parse_response_body(response: aiohttp.ClientResponse) -> Any:
+    """Parse the response body of an aiohttp response."""
+    if response.content_length == 0:
+        return None
+    elif response.content_type.lower() == "application/json":
+        return await response.json()
+    else:
+        return await response.text()
