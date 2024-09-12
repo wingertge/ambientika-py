@@ -172,6 +172,11 @@ class Device:
             case _:
                 raise NotImplementedError
 
+    async def reset_filter(self) -> Result[None, HttpError]:
+        """Reset the filter alarm on the device."""
+        data = {"deviceSerialNumber": self.serial_number}
+        return await self.api.get("device/reset-filter", data)
+
     async def change_mode(self, mode: DeviceMode) -> Result[None, HttpError]:
         """Change the operating mode, fan speed or targeted temperature of the device."""
         data = {
