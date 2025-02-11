@@ -85,13 +85,20 @@ class HumidityLevel(IntEnum):
     Normal = 1
     Moist = 2
 
+class LightSensorLevel(IntEnum):
+    """The light sensor level targeted by the device."""
+
+    NotAvailable = 0
+    Off = 1
+    Low = 2
+    Medium = 3
 
 class DeviceStatus(TypedDict):
     """A status packet published by the device."""
-
     operating_mode: OperatingMode
     fan_speed: FanSpeed
     humidity_level: HumidityLevel
+    light_sensor_level: LightSensorLevel
     temperature: int
     humidity: int
     air_quality: str
@@ -111,6 +118,7 @@ class DeviceMode(TypedDict):
     operating_mode: OperatingMode
     fan_speed: FanSpeed
     humidity_level: HumidityLevel
+    light_sensor_level: LightSensorLevel
 
 
 class Device:
@@ -154,6 +162,7 @@ class Device:
                         "operating_mode": OperatingMode[data["operatingMode"]],
                         "fan_speed": FanSpeed[data["fanSpeed"]],
                         "humidity_level": HumidityLevel[data["humidityLevel"]],
+                        "light_sensor_level" : LightSensorLevel[data["lightSensorLevel"]],
                         "temperature": data["temperature"],
                         "humidity": data["humidity"],
                         "air_quality": data["airQuality"],
@@ -178,12 +187,14 @@ class Device:
         return await self.api.get("device/reset-filter", data)
 
     async def change_mode(self, mode: DeviceMode) -> Result[None, HttpError]:
-        """Change the operating mode, fan speed or targeted temperature of the device."""
+        """Change the operating mode, fan speed, humidity level 
+           or light sensor level of the device."""
         data = {
             "deviceSerialNumber": self.serial_number,
             "operatingMode": str(mode["operating_mode"].value),
             "fanSpeed": mode["fan_speed"].value,
             "humidityLevel": mode["humidity_level"].value,
+            "lightSensorLevel": mode["light_sensor_level"].value
         }
         return await self.api.post("device/change-mode", data)
 
