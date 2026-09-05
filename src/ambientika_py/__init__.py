@@ -76,6 +76,7 @@ class FanSpeed(IntEnum):
     Low = 0
     Medium = 1
     High = 2
+    Night = 3
 
 
 class HumidityLevel(IntEnum):
